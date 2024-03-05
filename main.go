@@ -67,6 +67,10 @@ func main() {
 	flaggy.DefaultParser.DisableShowVersionWithVersion()
 	flaggy.Parse()
 
+	if TORBOX_API_KEY == "" {
+		slog.Warn("TORBOX_API_KEY environment variable is not set; torbox will likely fail to authenticate with torbox.app.")
+	}
+
 	if subcommandList.Used {
 		var torboxBody []byte
 
