@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -68,7 +68,7 @@ func main() {
 	flaggy.Parse()
 
 	if TORBOX_API_KEY == "" {
-		slog.Warn("TORBOX_API_KEY environment variable is not set; torbox will likely fail to authenticate with torbox.app.")
+		log.Fatal("TORBOX_API_KEY environment variable is not set; torbox will likely fail to authenticate with torbox.app.")
 	}
 
 	if subcommandList.Used {
@@ -83,27 +83,27 @@ func main() {
 		client := &http.Client{}
 		req, err := http.NewRequest("GET", "https://api.torbox.app/v1/api/torrents/mylist", nil)
 		if err != nil {
-			slog.Error("failed to create HTTP request object: ", err)
+			log.Fatal("failed to create HTTP request object: ", err)
 		}
 		req.Header.Add("Authorization", "bearer "+TORBOX_API_KEY)
 		resp, err := client.Do(req)
 		if err != nil {
-			slog.Error("HTTP request failed: ", err)
+			log.Fatal("HTTP request failed: ", err)
 		}
 		if resp.StatusCode != http.StatusOK {
-			slog.Error("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
+			log.Fatal("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
 		}
 		defer resp.Body.Close()
 		torboxBody, err = io.ReadAll(resp.Body)
 		if err != nil {
-			slog.Error("failed to read HTTP response body: ", err)
+			log.Fatal("failed to read HTTP response body: ", err)
 		}
 
 		if isJSON {
 			fmt.Println(string(torboxBody))
 		} else {
 			if err = json.Unmarshal(torboxBody, &ttl); err != nil {
-				slog.Error("failed to decode JSON response: ", err)
+				log.Fatal("failed to decode JSON response: ", err)
 			}
 			for _, torrent := range ttl.Data {
 				if isHumanReadable {
@@ -120,7 +120,7 @@ func main() {
 		var client http.Client
 
 		if err := json.NewDecoder(os.Stdin).Decode(&ttl); err != nil {
-			slog.Error("failed to decode JSON input: ", err)
+			log.Fatal("failed to decode JSON input: ", err)
 		}
 
 		for _, torrent := range ttl.Data {
@@ -129,44 +129,44 @@ func main() {
 
 				req, err := http.NewRequest("GET", fmt.Sprintf("https://api.torbox.app/v1/api/torrents/requestdl?token=%s&torrent_id=%d&file_id=%d", TORBOX_API_KEY, torrent.ID, torrentfile.ID), nil)
 				if err != nil {
-					slog.Error("failed to create HTTP request object: ", err)
+					log.Fatal("failed to create HTTP request object: ", err)
 				}
 				resp, err := client.Do(req)
 				if err != nil {
-					slog.Error("HTTP request failed: ", err)
+					log.Fatal("HTTP request failed: ", err)
 				}
 				if resp.StatusCode != http.StatusOK {
-					slog.Error("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
+					log.Fatal("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
 				}
 				json.NewDecoder(resp.Body).Decode(&downloadRequest)
 				if err = resp.Body.Close(); err != nil {
-					slog.Warn("failed to close HTTP response body: ", err)
+					log.Fatal("failed to close HTTP response body: ", err)
 				}
 				req, err = http.NewRequest("GET", downloadRequest.Data, nil)
 				if err != nil {
-					slog.Error("failed to create HTTP request object: ", err)
+					log.Fatal("failed to create HTTP request object: ", err)
 				}
 				resp, err = client.Do(req)
 				if err != nil {
-					slog.Error("HTTP request failed: ", err)
+					log.Fatal("HTTP request failed: ", err)
 				}
 				if resp.StatusCode != http.StatusOK {
-					slog.Error("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
+					log.Fatal("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
 				}
 				if err = resp.Body.Close(); err != nil {
-					slog.Warn("failed to close HTTP response body: ", err)
+					log.Fatal("failed to close HTTP response body: ", err)
 				}
 
 				if err = os.MkdirAll(filepath.Dir(torrentfile.Name), 0755); err != nil {
-					slog.Error("failed to create directory '", filepath.Dir(torrentfile.Name), "': ", err)
+					log.Fatal("failed to create directory '", filepath.Dir(torrentfile.Name), "': ", err)
 				}
 
 				cmd := exec.Command("wget", "--directory-prefix", filepath.Dir(torrentfile.Name), "--output-document", torrentfile.Name, downloadRequest.Data)
 				cmd.Stdout = os.Stdout // Redirect wget's output and error streams to this program's output and error streams.
 				cmd.Stderr = os.Stderr // So that the user sees the progress of the download.
-				slog.Info(cmd.String())
+				fmt.Println(cmd.String())
 				if err = cmd.Run(); err != nil {
-					slog.Error("failed to execute download command: ", err)
+					log.Fatal("failed to execute download command: ", err)
 				}
 
 				// Verify that the file's MD5 hash matches the TorBox API's MD5 hash.
@@ -174,11 +174,11 @@ func main() {
 					defer f.Close()
 					h := md5.New()
 					if _, err := io.Copy(h, f); err != nil {
-						slog.Error("failed to calculate MD5 hash of '", torrentfile.Name, "': ", err)
+						log.Fatal("failed to calculate MD5 hash of '", torrentfile.Name, "': ", err)
 						continue
 					}
 					if torrentfile.MD5 != fmt.Sprintf("%x", h.Sum(nil)) {
-						slog.Error("MD5 hash mismatch")
+						log.Fatal("MD5 hash mismatch")
 					}
 				}
 			}
