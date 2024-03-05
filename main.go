@@ -3,8 +3,10 @@ package main
 import (
 	"crypto/md5"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,7 +43,7 @@ type TorboxTorrentFile struct {
 	ID        int
 	MD5       string
 	Name      string
-	Size      int
+	Size      int64
 	MimeType  string
 	ShortName string `json:"short_name"`
 }
@@ -173,18 +175,6 @@ func main() {
 
 		for _, tf := range torrentFilesToDownload {
 			var downloadRequest TorboxDownloadResponse
-
-			// Check if the file already exists and has the correct MD5 hash. If so, skip the download.
-			if f, err := os.Open(tf.Name); err == nil {
-				defer f.Close()
-				h := md5.New()
-				_, err := io.Copy(h, f)
-				if err == nil && tf.MD5 == fmt.Sprintf("%x", h.Sum(nil)) {
-					continue
-				} else {
-					slog.Warn("failed to calculate MD5 hash of '", tf.Name, "': ", err)
-				}
-			}
 
 			req, err := http.NewRequest("GET", fmt.Sprintf("https://api.torbox.app/v1/api/torrents/requestdl?token=%s&torrent_id=%d&file_id=%d", TORBOX_API_KEY, id, tf.ID), nil)
 			if err != nil {
