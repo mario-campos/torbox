@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,7 @@ type TorboxTorrent struct {
 type TorboxTorrentFile struct {
 	ID        int
 	MD5       string
+	Name      string
 	Size      int
 	MimeType  string
 	ShortName string `json:"short_name"`
@@ -173,14 +175,14 @@ func main() {
 			var downloadRequest TorboxDownloadResponse
 
 			// Check if the file already exists and has the correct MD5 hash. If so, skip the download.
-			if f, err := os.Open(tf.ShortName); err == nil {
+			if f, err := os.Open(tf.Name); err == nil {
 				defer f.Close()
 				h := md5.New()
 				_, err := io.Copy(h, f)
 				if err == nil && tf.MD5 == fmt.Sprintf("%x", h.Sum(nil)) {
 					continue
 				} else {
-					slog.Warn("failed to calculate MD5 hash of '", tf.ShortName, "': ", err)
+					slog.Warn("failed to calculate MD5 hash of '", tf.Name, "': ", err)
 				}
 			}
 
@@ -214,7 +216,11 @@ func main() {
 				slog.Warn("failed to close HTTP response body: ", err)
 			}
 
-			cmd := exec.Command("wget", "--output-document", tf.ShortName, downloadRequest.Data)
+			if err = os.MkdirAll(filepath.Dir(tf.Name), 0755); err != nil {
+				slog.Error("failed to create directory '", filepath.Dir(tf.Name), "': ", err)
+			}
+
+			cmd := exec.Command("wget", "--directory-prefix", filepath.Dir(tf.Name), "--output-document", tf.Name, downloadRequest.Data)
 			cmd.Stdout = os.Stdout // Redirect wget's output and error streams to this program's output and error streams.
 			cmd.Stderr = os.Stderr // So that the user sees the progress of the download.
 			if err = cmd.Run(); err != nil {
@@ -222,11 +228,11 @@ func main() {
 			}
 
 			// Verify that the file's MD5 hash matches the TorBox API's MD5 hash.
-			if f, err := os.Open(tf.ShortName); err == nil {
+			if f, err := os.Open(tf.Name); err == nil {
 				defer f.Close()
 				h := md5.New()
 				if _, err := io.Copy(h, f); err != nil {
-					slog.Error("failed to calculate MD5 hash of '", tf.ShortName, "': ", err)
+					slog.Error("failed to calculate MD5 hash of '", tf.Name, "': ", err)
 					continue
 				}
 				if tf.MD5 != fmt.Sprintf("%x", h.Sum(nil)) {
