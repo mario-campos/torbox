@@ -93,20 +93,18 @@ func main() {
 		if resp.StatusCode != http.StatusOK {
 			slog.Error("HTTP status (", resp.Status, ") does not match expected status (200 OK)")
 		}
+		defer resp.Body.Close()
 		torboxBody, err = io.ReadAll(resp.Body)
 		if err != nil {
 			slog.Error("failed to read HTTP response body: ", err)
-		}
-		if err = json.Unmarshal(torboxBody, &ttl); err != nil {
-			slog.Error("failed to decode JSON response: ", err)
-		}
-		if err = resp.Body.Close(); err != nil {
-			slog.Warn("cannot close HTTP response body: ", err)
 		}
 
 		if isJSON {
 			fmt.Println(string(torboxBody))
 		} else {
+			if err = json.Unmarshal(torboxBody, &ttl); err != nil {
+				slog.Error("failed to decode JSON response: ", err)
+			}
 			for _, torrent := range ttl.Data {
 				if isHumanReadable {
 					fmt.Printf("%d %3.f%% %s  %s\n", torrent.ID, torrent.Progress*100, HumanReadableSize(torrent.Size), torrent.Name)
