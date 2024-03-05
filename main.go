@@ -164,6 +164,7 @@ func main() {
 				cmd := exec.Command("wget", "--directory-prefix", filepath.Dir(torrentfile.Name), "--output-document", torrentfile.Name, downloadRequest.Data)
 				cmd.Stdout = os.Stdout // Redirect wget's output and error streams to this program's output and error streams.
 				cmd.Stderr = os.Stderr // So that the user sees the progress of the download.
+				slog.Info("executing command: ", cmd.String())
 				if err = cmd.Run(); err != nil {
 					slog.Error("failed to execute download command: ", err)
 				}
