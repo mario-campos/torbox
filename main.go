@@ -63,6 +63,9 @@ func main() {
 	subcommandDownload := flaggy.NewSubcommand("download")
 	flaggy.AttachSubcommand(subcommandDownload, 1)
 
+	subcommandChecksum := flaggy.NewSubcommand("checksum")
+	flaggy.AttachSubcommand(subcommandChecksum, 1)
+
 	flaggy.SetName("torbox")
 	flaggy.DefaultParser.DisableShowVersionWithVersion()
 	flaggy.Parse()
@@ -167,21 +170,38 @@ func main() {
 				if err = cmd.Run(); err != nil {
 					Error("failed to execute command: %s", err)
 				}
+			}
+		}
+		return
+	}
 
-				// Verify that the file's MD5 hash matches the TorBox API's MD5 hash.
-				if f, err := os.Open(torrentfile.Name); err == nil {
-					defer f.Close()
-					h := md5.New()
-					if _, err := io.Copy(h, f); err != nil {
-						Warn("failed to calculate MD5 hash of '%s': %s", torrentfile.Name, err)
-						continue
-					}
-					if torrentfile.MD5 != fmt.Sprintf("%x", h.Sum(nil)) {
-						Warn("expected MD5 hash %s, got %s", torrentfile.MD5, fmt.Sprintf("%x", h.Sum(nil)))
-					}
+	if subcommandChecksum.Used {
+		var h = md5.New()
+
+		if err := json.NewDecoder(os.Stdin).Decode(&ttl); err != nil {
+			Error("failed to decode standard input as JSON: %s", err)
+		}
+
+		for _, torrent := range ttl.Data {
+			for _, torrentfile := range torrent.Files {
+				f, err := os.Open(torrentfile.Name)
+				if err != nil {
+					fmt.Printf("%s MD5 SKIPPED (%s)\n", torrentfile.Name, err)
+					continue
+				}
+				defer f.Close()
+				if _, err := io.Copy(h, f); err != nil {
+					fmt.Printf("%s MD5 SKIPPED (%s)\n", torrentfile.Name, err)
+					continue
+				}
+				if torrentfile.MD5 != fmt.Sprintf("%x", h.Sum(nil)) {
+					fmt.Println(torrentfile.Name, "MD5 MISMATCH")
+				} else {
+					fmt.Println(torrentfile.Name, "MD5 OK")
 				}
 			}
 		}
+		return
 	}
 }
 
