@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -176,30 +175,33 @@ func main() {
 	}
 
 	if subcommandChecksum.Used {
-		var h = md5.New()
-
 		if err := json.NewDecoder(os.Stdin).Decode(&ttl); err != nil {
 			Error("failed to decode standard input as JSON: %s", err)
 		}
 
+		// Unfortunately, the md5sum command does not support the standard convention
+		// of a single hyphen character '-' to indicate that it should read from standard input.
+		// Instead, we must use the /dev/stdin device file, which is not supported everywhere.
+		cmd := exec.Command("md5sum", "-c", "/dev/stdin")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		hashpipe, err := cmd.StdinPipe()
+		if err != nil {
+			Error("failed to create pipe to md5sum: %s", err)
+		}
+
 		for _, torrent := range ttl.Data {
 			for _, torrentfile := range torrent.Files {
-				f, err := os.Open(torrentfile.Name)
-				if err != nil {
-					fmt.Printf("%s MD5 SKIPPED (%s)\n", torrentfile.Name, err)
-					continue
-				}
-				defer f.Close()
-				if _, err := io.Copy(h, f); err != nil {
-					fmt.Printf("%s MD5 SKIPPED (%s)\n", torrentfile.Name, err)
-					continue
-				}
-				if torrentfile.MD5 != fmt.Sprintf("%x", h.Sum(nil)) {
-					fmt.Println(torrentfile.Name, "MD5 MISMATCH")
-				} else {
-					fmt.Println(torrentfile.Name, "MD5 OK")
-				}
+				hashpipe.Write([]byte(fmt.Sprintf("%s  %s\n", torrentfile.MD5, torrentfile.Name)))
 			}
+		}
+		if err = hashpipe.Close(); err != nil {
+			Warn("failed to close pipe to md5sum: %s", err)
+		}
+
+		Info("executing command: %s", cmd.String())
+		if err := cmd.Run(); err != nil {
+			Error("failed to execute md5sum: %s", err)
 		}
 		return
 	}
