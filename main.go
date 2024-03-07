@@ -236,7 +236,9 @@ func Error(msg string, args ...any) {
 // that can be executed in a shell without any whitespace confusions.
 func Marshell(cmd *exec.Cmd) string {
 	for i, arg := range cmd.Args {
-		if strings.ContainsAny(arg, " \"") {
+		if strings.Contains(arg, "'") {
+			cmd.Args[i] = `"` + arg + `"`
+		} else if strings.ContainsAny(arg, " \"") {
 			cmd.Args[i] = `'` + arg + `'`
 		}
 	}
