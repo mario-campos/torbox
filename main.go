@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/integrii/flaggy"
@@ -52,6 +53,8 @@ var TORBOX_API_KEY = os.Getenv("TORBOX_API_KEY")
 func main() {
 	var isJSON bool
 	var isHumanReadable bool
+	var isNoDownload bool
+	var isNulSep bool
 	var ttl TorboxTorrentList
 
 	subcommandList := flaggy.NewSubcommand("list")
@@ -60,6 +63,8 @@ func main() {
 	flaggy.AttachSubcommand(subcommandList, 1)
 
 	subcommandDownload := flaggy.NewSubcommand("download")
+	subcommandDownload.Bool(&isNoDownload, "D", "no-download", "Output the download URLs to standard output, but do not download the files")
+	subcommandDownload.Bool(&isNulSep, "0", "null", "Use the ASCII NUL character (0x00) as the delimiter between filenames; implies --no-download.")
 	flaggy.AttachSubcommand(subcommandDownload, 1)
 
 	subcommandMD5sum := flaggy.NewSubcommand("md5sum")
@@ -120,6 +125,11 @@ func main() {
 	if subcommandDownload.Used {
 		var client http.Client
 
+		// -0,--null implies -D,--no-download.
+		if isNulSep {
+			isNoDownload = true
+		}
+
 		if err := json.NewDecoder(os.Stdin).Decode(&ttl); err != nil {
 			Error("failed to decode standard input as JSON: %s", err)
 		}
@@ -165,9 +175,18 @@ func main() {
 				cmd := exec.Command("wget", "--continue", "--no-clobber", "--directory-prefix", filepath.Dir(torrentfile.Name), "--output-document", torrentfile.Name, downloadRequest.Data)
 				cmd.Stdout = os.Stdout // Redirect wget's output and error streams to this program's output and error streams.
 				cmd.Stderr = os.Stderr // So that the user sees the progress of the download.
-				Info("executing command: %s", cmd.Args)
-				if err = cmd.Run(); err != nil {
-					Error("failed to execute command: %s", err)
+
+				if isNoDownload {
+					if isNulSep {
+						fmt.Printf("%s\x00", Marshell(cmd))
+					} else {
+						fmt.Println(Marshell(cmd))
+					}
+				} else {
+					Info("executing command: %s", cmd.Args)
+					if err = cmd.Run(); err != nil {
+						Error("failed to execute command: %s", err)
+					}
 				}
 			}
 		}
@@ -211,4 +230,15 @@ func Warn(msg string, args ...any) {
 
 func Error(msg string, args ...any) {
 	log.Fatalf("ERROR "+msg, args...)
+}
+
+// Marshell takes a command object and marshals it into a string representation
+// that can be executed in a shell without any whitespace confusions.
+func Marshell(cmd *exec.Cmd) string {
+	for i, arg := range cmd.Args {
+		if strings.ContainsAny(arg, " \"") {
+			cmd.Args[i] = `'` + arg + `'`
+		}
+	}
+	return strings.Join(cmd.Args, " ")
 }
