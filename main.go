@@ -238,7 +238,7 @@ func Marshell(cmd *exec.Cmd) string {
 	for i, arg := range cmd.Args {
 		if strings.Contains(arg, "'") {
 			cmd.Args[i] = `"` + arg + `"`
-		} else if strings.ContainsAny(arg, " \"") {
+		} else if strings.ContainsAny(arg, ` ?[]#$"`) {
 			cmd.Args[i] = `'` + arg + `'`
 		}
 	}
