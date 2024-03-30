@@ -172,7 +172,7 @@ func main() {
 					Error("failed to create directory '%s': %s", filepath.Dir(torrentfile.Name), err)
 				}
 
-				cmd := exec.Command("wget", "--continue", "--no-clobber", "--directory-prefix", filepath.Dir(torrentfile.Name), "--output-document", torrentfile.Name, downloadRequest.Data)
+				cmd := exec.Command("wget", "--continue", "--directory-prefix", filepath.Dir(torrentfile.Name), "--output-document", torrentfile.Name, downloadRequest.Data)
 				cmd.Stdout = os.Stdout // Redirect wget's output and error streams to this program's output and error streams.
 				cmd.Stderr = os.Stderr // So that the user sees the progress of the download.
 
