@@ -113,9 +113,12 @@ func main() {
 			}
 			for _, torrent := range ttl.Data {
 				if isHumanReadable {
-					fmt.Printf("%d %3.f%% %s  %s\n", torrent.ID, torrent.Progress*100, HumanReadableSize(torrent.Size), torrent.Name)
+					fmt.Printf("%d %d%% %s  %s\n", torrent.ID, int(torrent.Progress*100), HumanReadableSize(torrent.Size), torrent.Name)
 				} else {
-					fmt.Printf("%d %.2f %d\t%s\n", torrent.ID, torrent.Progress, torrent.Size, torrent.Name)
+					// This little type casting hack is necessary because otherwise %.2f will round the
+					// float up to the nearest number of that precision, which can lead to confusing
+					// results, like torrents with 99% progress appearing to be 100% complete.
+					fmt.Printf("%d %.2f %d\t%s\n", torrent.ID, float64(int(torrent.Progress*100))/100, torrent.Size, torrent.Name)
 				}
 			}
 		}
