@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -190,6 +191,26 @@ func main() {
 					if err = cmd.Run(); err != nil {
 						Error("failed to execute command: %s", err)
 					}
+				}
+
+				// Verify the MD5 hash of the downloaded file.
+				downloadedFile, err := os.Open(torrentfile.Name)
+				if err != nil {
+					Warn("failed to open downloaded file '%s': %s", torrentfile.Name, err)
+					continue
+				}
+				defer downloadedFile.Close()
+
+				hash := md5.New()
+				_, err = io.Copy(hash, downloadedFile)
+				if err != nil {
+					Warn("failed to generate an MD5 hash of the download: %s", err)
+					continue
+				}
+				
+				if fmt.Sprintf("%x", hash.Sum(nil)) != torrentfile.MD5 {
+					Warn("MD5 hash (%s) of downloaded file '%s' does not match expected MD5 hash (%s)", fmt.Sprintf("%x", hash.Sum(nil)), torrentfile.Name, torrentfile.MD5)
+					continue
 				}
 			}
 		}
