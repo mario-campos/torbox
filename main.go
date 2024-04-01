@@ -68,9 +68,6 @@ func main() {
 	subcommandDownload.Bool(&isNulSep, "0", "null", "Use the ASCII NUL character (0x00) as the delimiter between filenames; implies --no-download.")
 	flaggy.AttachSubcommand(subcommandDownload, 1)
 
-	subcommandMD5sum := flaggy.NewSubcommand("md5sum")
-	flaggy.AttachSubcommand(subcommandMD5sum, 1)
-
 	flaggy.SetName("torbox")
 	flaggy.DefaultParser.DisableShowVersionWithVersion()
 	flaggy.Parse()
@@ -207,25 +204,11 @@ func main() {
 					Warn("failed to generate an MD5 hash of the download: %s", err)
 					continue
 				}
-				
+
 				if fmt.Sprintf("%x", hash.Sum(nil)) != torrentfile.MD5 {
 					Warn("MD5 hash (%s) of downloaded file '%s' does not match expected MD5 hash (%s)", fmt.Sprintf("%x", hash.Sum(nil)), torrentfile.Name, torrentfile.MD5)
 					continue
 				}
-			}
-		}
-		return
-	}
-
-	if subcommandMD5sum.Used {
-		if err := json.NewDecoder(os.Stdin).Decode(&ttl); err != nil {
-			Error("failed to decode standard input as JSON: %s", err)
-		}
-		for _, torrent := range ttl.Data {
-			for _, torrentfile := range torrent.Files {
-				// This format is compatible with md5sum(1):
-				//    <md5sum>  <filename>
-				fmt.Printf("%s  %s\n", torrentfile.MD5, torrentfile.Name)
 			}
 		}
 		return
