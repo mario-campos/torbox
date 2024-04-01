@@ -206,8 +206,10 @@ func main() {
 					continue
 				}
 
-				if fmt.Sprintf("%x", hash.Sum(nil)) != torrentfile.MD5 {
-					Warn("MD5 hash (%s) of downloaded file '%s' does not match expected MD5 hash (%s)", fmt.Sprintf("%x", hash.Sum(nil)), torrentfile.Name, torrentfile.MD5)
+				if fmt.Sprintf("%x", hash.Sum(nil)) == torrentfile.MD5 {
+					Info("%s: MD5 OK", torrentfile.Name)
+				} else {
+					Warn("%s: MD5 FAILED (expected %s; got %s)", torrentfile.Name, torrentfile.MD5, fmt.Sprintf("%x", hash.Sum(nil)))
 					continue
 				}
 			}
