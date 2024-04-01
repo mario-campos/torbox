@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/integrii/flaggy"
+	"github.com/ryanuber/go-glob"
 )
 
 type TorboxTorrentList struct {
@@ -57,6 +58,9 @@ func main() {
 	var isNoDownload bool
 	var isNulSep bool
 	var ttl TorboxTorrentList
+	var torboxBody []byte
+	var client http.Client
+	var torrentNameHint string
 
 	subcommandList := flaggy.NewSubcommand("list")
 	subcommandList.Bool(&isHumanReadable, "H", "human-readable", "Human-readable output")
@@ -66,6 +70,7 @@ func main() {
 	subcommandDownload := flaggy.NewSubcommand("download")
 	subcommandDownload.Bool(&isNoDownload, "D", "no-download", "Output the download URLs to standard output, but do not download the files")
 	subcommandDownload.Bool(&isNulSep, "0", "null", "Use the ASCII NUL character (0x00) as the delimiter between filenames; implies --no-download.")
+	subcommandDownload.AddPositionalValue(&torrentNameHint, "NAME", 1, false, "The name of the torrent to download")
 	flaggy.AttachSubcommand(subcommandDownload, 1)
 
 	flaggy.SetName("torbox")
@@ -76,39 +81,37 @@ func main() {
 		Warn("TORBOX_API_KEY environment variable is not set; torbox will likely fail to authenticate with torbox.app.")
 	}
 
+	if isJSON && isHumanReadable {
+		Error("cannot use both --json and --human-readable flags")
+	}
+
+	// Request the list of ttl from the torbox.app API.
+	req, err := http.NewRequest("GET", "https://api.torbox.app/v1/api/torrents/mylist", nil)
+	if err != nil {
+		Error("failed to create HTTP request object: %s", err)
+	}
+	req.Header.Add("Authorization", "bearer "+TORBOX_API_KEY)
+	resp, err := client.Do(req)
+	if err != nil {
+		Error("HTTP request failed: %s", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		Error("expected HTTP status 200, got: %s", resp.Status)
+	}
+	defer resp.Body.Close()
+	torboxBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		Error("failed to read HTTP response body: %s", err)
+	}
+
+	if err = json.Unmarshal(torboxBody, &ttl); err != nil {
+		Error("failed to decode JSON response: %s", err)
+	}
+
 	if subcommandList.Used {
-		var torboxBody []byte
-
-		if isJSON && isHumanReadable {
-			Error("cannot use both --json and --human-readable flags")
-		}
-
-		// Request the list of ttl from the torbox.app API.
-		client := &http.Client{}
-		req, err := http.NewRequest("GET", "https://api.torbox.app/v1/api/torrents/mylist", nil)
-		if err != nil {
-			Error("failed to create HTTP request object: %s", err)
-		}
-		req.Header.Add("Authorization", "bearer "+TORBOX_API_KEY)
-		resp, err := client.Do(req)
-		if err != nil {
-			Error("HTTP request failed: %s", err)
-		}
-		if resp.StatusCode != http.StatusOK {
-			Error("expected HTTP status 200, got: %s", resp.Status)
-		}
-		defer resp.Body.Close()
-		torboxBody, err = io.ReadAll(resp.Body)
-		if err != nil {
-			Error("failed to read HTTP response body: %s", err)
-		}
-
 		if isJSON {
 			fmt.Println(string(torboxBody))
 		} else {
-			if err = json.Unmarshal(torboxBody, &ttl); err != nil {
-				Error("failed to decode JSON response: %s", err)
-			}
 			for _, torrent := range ttl.Data {
 				if isHumanReadable {
 					fmt.Printf("%d %d%% %s  %s\n", torrent.ID, int(torrent.Progress*100), HumanReadableSize(torrent.Size), torrent.Name)
@@ -123,19 +126,13 @@ func main() {
 		return
 	}
 
-	if subcommandDownload.Used {
-		var client http.Client
+	// -0,--null implies -D,--no-download.
+	if isNulSep {
+		isNoDownload = true
+	}
 
-		// -0,--null implies -D,--no-download.
-		if isNulSep {
-			isNoDownload = true
-		}
-
-		if err := json.NewDecoder(os.Stdin).Decode(&ttl); err != nil {
-			Error("failed to decode standard input as JSON: %s", err)
-		}
-
-		for _, torrent := range ttl.Data {
+	for _, torrent := range ttl.Data {
+		if torrentNameHint == "" || torrentNameHint == torrent.Name || glob.Glob(torrentNameHint, torrent.Name) {
 			for _, torrentfile := range torrent.Files {
 				var downloadRequest TorboxDownloadResponse
 
@@ -211,7 +208,6 @@ func main() {
 				}
 			}
 		}
-		return
 	}
 }
 
