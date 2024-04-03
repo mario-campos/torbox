@@ -55,6 +55,8 @@ var TORBOX_API_KEY = os.Getenv("TORBOX_API_KEY")
 func main() {
 	var isJSON bool
 	var isHumanReadable bool
+	var isNoDownload bool
+	var isNulSep bool
 	var ttl TorboxTorrentList
 	var torboxBody []byte
 	var client http.Client
@@ -66,6 +68,8 @@ func main() {
 	flaggy.AttachSubcommand(subcommandList, 1)
 
 	subcommandDownload := flaggy.NewSubcommand("download")
+	subcommandDownload.Bool(&isNoDownload, "D", "no-download", "Output the download URLs to standard output, but do not download the files")
+	subcommandDownload.Bool(&isNulSep, "0", "null", "Use the ASCII NUL character (0x00) as the delimiter between filenames; implies --no-download.")
 	subcommandDownload.AddPositionalValue(&torrentNameHint, "NAME", 1, false, "The name of the torrent to download")
 	flaggy.AttachSubcommand(subcommandDownload, 1)
 
@@ -122,6 +126,11 @@ func main() {
 		return
 	}
 
+	// -0,--null implies -D,--no-download.
+	if isNulSep {
+		isNoDownload = true
+	}
+
 	for _, torrent := range ttl.Data {
 		if torrentNameHint == "" || torrentNameHint == torrent.Name || glob.Glob(torrentNameHint, torrent.Name) {
 			if !torrent.DownloadFinished {
@@ -129,15 +138,7 @@ func main() {
 				continue
 			}
 			for _, torrentfile := range torrent.Files {
-				if err = os.MkdirAll(filepath.Dir(torrentfile.Name), 0755); err != nil {
-					Error("failed to create directory '%s': %s", filepath.Dir(torrentfile.Name), err)
-				}
-
-				f, err := os.OpenFile(torrentfile.Name, os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					Error("failed to open file '%s': %s", torrentfile.Name, err)
-				}
-				defer f.Close()
+				var downloadRequest TorboxDownloadResponse
 
 				req, err := http.NewRequest("GET", fmt.Sprintf("https://api.torbox.app/v1/api/torrents/requestdl?token=%s&torrent_id=%d&file_id=%d", TORBOX_API_KEY, torrent.ID, torrentfile.ID), nil)
 				if err != nil {
@@ -150,8 +151,6 @@ func main() {
 				if resp.StatusCode != http.StatusOK {
 					Error("expected HTTP status 200, got: %s", resp.Status)
 				}
-
-				var downloadRequest TorboxDownloadResponse
 				json.NewDecoder(resp.Body).Decode(&downloadRequest)
 				if err = resp.Body.Close(); err != nil {
 					Warn("failed to close HTTP response body: %s", err)
@@ -171,38 +170,46 @@ func main() {
 					Warn("failed to close HTTP response body: %s", err)
 				}
 
-				req, err = http.NewRequest("GET", downloadRequest.Data, nil)
-				if err != nil {
-					Error("failed to create HTTP request object: %s", err)
+				if err = os.MkdirAll(filepath.Dir(torrentfile.Name), 0755); err != nil {
+					Error("failed to create directory '%s': %s", filepath.Dir(torrentfile.Name), err)
 				}
-				resp, err = client.Do(req)
-				if err != nil {
-					Error("HTTP request failed: %s", err)
-				}
-				defer resp.Body.Close()
 
-				h := md5.New()
-				buffer := make([]byte, 64<<10)
-				for {
-					n, err := resp.Body.Read(buffer)
-					if err != nil && err != io.EOF {
-						Error("failed to read from HTTP response: %s", err)
+				cmd := exec.Command("wget", "--continue", "--directory-prefix", filepath.Dir(torrentfile.Name), "--output-document", torrentfile.Name, downloadRequest.Data)
+				cmd.Stdout = os.Stdout // Redirect wget's output and error streams to this program's output and error streams.
+				cmd.Stderr = os.Stderr // So that the user sees the progress of the download.
+
+				if isNoDownload {
+					if isNulSep {
+						fmt.Printf("%s\x00", Marshell(cmd))
+					} else {
+						fmt.Println(Marshell(cmd))
 					}
-					if n == 0 && err == io.EOF {
-						break
-					}
-					if _, err = f.Write(buffer[:n]); err != nil {
-						Error("failed to write to file '%s': %s", torrentfile.Name, err)
-					}
-					if _, err = h.Write(buffer[:n]); err != nil {
-						Warn("failed to write to MD5 hash: %s", err)
+				} else {
+					Info("executing command: %s", cmd.Args)
+					if err = cmd.Run(); err != nil {
+						Error("failed to execute command: %s", err)
 					}
 				}
 
-				if fmt.Sprintf("%x", h.Sum(nil)) == torrentfile.MD5 {
+				// Verify the MD5 hash of the downloaded file.
+				downloadedFile, err := os.Open(torrentfile.Name)
+				if err != nil {
+					Warn("failed to open downloaded file '%s': %s", torrentfile.Name, err)
+					continue
+				}
+				defer downloadedFile.Close()
+
+				hash := md5.New()
+				_, err = io.Copy(hash, downloadedFile)
+				if err != nil {
+					Warn("failed to generate an MD5 hash of the download: %s", err)
+					continue
+				}
+
+				if fmt.Sprintf("%x", hash.Sum(nil)) == torrentfile.MD5 {
 					Info("%s: MD5 OK", torrentfile.Name)
 				} else {
-					Warn("%s: MD5 FAILED (expected %s; got %s)", torrentfile.Name, torrentfile.MD5, fmt.Sprintf("%x", h.Sum(nil)))
+					Warn("%s: MD5 FAILED (expected %s; got %s)", torrentfile.Name, torrentfile.MD5, fmt.Sprintf("%x", hash.Sum(nil)))
 					continue
 				}
 			}
