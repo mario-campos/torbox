@@ -124,8 +124,8 @@ func main() {
 
 	for _, torrent := range ttl.Data {
 		if torrentNameHint == "" || torrentNameHint == torrent.Name || glob.Glob(torrentNameHint, torrent.Name) {
-			if torrent.Progress != 1 {
-				Warn("torrent '%s' is not fully downloaded; skipping", torrent.Name)
+			if !torrent.DownloadFinished {
+				Warn("torrent '%s' is not ready to be downloaded; skipping", torrent.Name)
 				continue
 			}
 			for _, torrentfile := range torrent.Files {
