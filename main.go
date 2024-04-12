@@ -232,11 +232,13 @@ func main() {
 
 				Info("Downloaded '%s' (%s)", torrentfile.Name, HumanReadableSize(torrentfile.Size))
 
-				if fmt.Sprintf("%x", hash.Sum(nil)) == torrentfile.MD5 {
-					Info("%s: MD5 OK", torrentfile.Name)
-				} else {
-					Warn("%s: MD5 FAILED (expected %s; got %s)", torrentfile.Name, torrentfile.MD5, fmt.Sprintf("%x", hash.Sum(nil)))
-					continue
+				if torrentfile.MD5 != "" {
+					if fmt.Sprintf("%x", hash.Sum(nil)) == torrentfile.MD5 {
+						Info("%s: MD5 OK", torrentfile.Name)
+					} else {
+						Warn("%s: MD5 FAILED (expected %s; got %s)", torrentfile.Name, torrentfile.MD5, fmt.Sprintf("%x", hash.Sum(nil)))
+						continue
+					}
 				}
 			}
 		}
