@@ -154,43 +154,26 @@ func main() {
 				if err != nil {
 					Error("failed to create HTTP request object: %s", err)
 				}
-				resp, err := client.Do(req)
-				if err != nil {
-					Error("HTTP request failed: %s", err)
+
+				var resp *http.Response
+				// The torbox.app service is not five 9s reliable. Sometimes, it can
+				// take a while for a connection to "succeed." Retry up to 10 times.
+				for i := 0; i < 10; i++ {
+					Info("Attempting to request download link for '%s'... (#%d)", torrentfile.Name, i+1)
+					resp, err = client.Do(req)
+					if err == nil {
+						break
+					}
+					Warn("HTTP request failed: %s", err)
+					Warn("expected HTTP status 200, got: %s", resp.Status)
+					Info("Retrying in %d seconds...", 1<<i)
+					time.Sleep((1 << i) * time.Second)
 				}
-				if resp.StatusCode != http.StatusOK {
-					Error("expected HTTP status 200, got: %s", resp.Status)
-				}
+
 				json.NewDecoder(resp.Body).Decode(&downloadRequest)
 				if err = resp.Body.Close(); err != nil {
 					Warn("failed to close HTTP response body: %s", err)
 				}
-				req, err = http.NewRequest("GET", downloadRequest.Data, nil)
-				if err != nil {
-					Error("failed to create HTTP request object: %s", err)
-				}
-				resp, err = client.Do(req)
-				if err != nil {
-					Error("HTTP request failed: %s", err)
-				}
-				if resp.StatusCode != http.StatusOK {
-					Error("expected HTTP status 200, got: %s", resp.Status)
-				}
-				if err = resp.Body.Close(); err != nil {
-					Warn("failed to close HTTP response body: %s", err)
-				}
-
-				if err = os.MkdirAll(filepath.Dir(torrentfile.Name), 0755); err != nil {
-					Error("failed to create directory '%s': %s", filepath.Dir(torrentfile.Name), err)
-				}
-
-				// Download the file.
-				out, err := os.OpenFile(torrentfile.Name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-				if err != nil {
-					Error("failed to create file '%s': %s", torrentfile.Name, err)
-				}
-				defer out.Close()
-
 				req, err = http.NewRequest("GET", downloadRequest.Data, nil)
 				if err != nil {
 					Error("failed to create HTTP request object: %s", err)
@@ -209,6 +192,19 @@ func main() {
 					Info("Retrying in %d seconds...", 1<<i)
 					time.Sleep((1 << i) * time.Second)
 				}
+
+				defer resp.Body.Close()
+
+				if err = os.MkdirAll(filepath.Dir(torrentfile.Name), 0755); err != nil {
+					Error("failed to create directory '%s': %s", filepath.Dir(torrentfile.Name), err)
+				}
+
+				// Download the file.
+				out, err := os.OpenFile(torrentfile.Name, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if err != nil {
+					Error("failed to create file '%s': %s", torrentfile.Name, err)
+				}
+				defer out.Close()
 
 				Info("Downloading '%s'...", torrentfile.Name)
 				hash := md5.New()
