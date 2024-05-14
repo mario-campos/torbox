@@ -201,13 +201,12 @@ func main() {
 				for i := 0; i < 10; i++ {
 					Info("Attempting to download '%s'... (#%d)", torrentfile.Name, i+1)
 					resp, err = client.Do(req)
-					if err != nil {
-						Error("HTTP request failed: %s", err)
-					}
-					if resp.StatusCode == http.StatusOK {
+					if err == nil {
 						break
 					}
+					Warn("HTTP request failed: %s", err)
 					Warn("expected HTTP status 200, got: %s", resp.Status)
+					Info("Retrying in %d seconds...", 1<<i)
 					time.Sleep((1 << i) * time.Second)
 				}
 
