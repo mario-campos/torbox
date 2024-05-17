@@ -161,7 +161,7 @@ func main() {
 				for i := 0; i < 10; i++ {
 					Info("Attempting to request download link for '%s'... (#%d)", torrentfile.Name, i+1)
 					resp, err = client.Do(req)
-					if err == nil {
+					if err == nil && resp.StatusCode == http.StatusOK {
 						break
 					}
 					Warn("HTTP request failed: %s", err)
@@ -184,7 +184,7 @@ func main() {
 				for i := 0; i < 10; i++ {
 					Info("Attempting to download '%s'... (#%d)", torrentfile.Name, i+1)
 					resp, err = client.Do(req)
-					if err == nil {
+					if err == nil && resp.StatusCode == http.StatusOK {
 						break
 					}
 					Warn("HTTP request failed: %s", err)
